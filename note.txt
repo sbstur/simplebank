@@ -1,0 +1,74 @@
+// install and setup postgresql on ubuntu 20.04
+https://www.cherryservers.com/blog/how-to-install-and-setup-postgresql-server-on-ubuntu-20-04
+User: postgres Pwd: postgres Port: 5432
+sudo -u postgres psql 
+\c simple_bank
+
+// Install TablePlus for Linux
+
+INSERT INTO accounts (owner, balance, currency) VALUES ('john', 100, 'USD') RETURNING *;
+INSERT INTO accounts (owner, balance, currency) VALUES ('mary', 100, 'USD') RETURNING *;
+
+BEGIN;
+
+INSERT INTO transfers (from_account_id, to_account_id, amount) VALUES (1, 2, 10) RETURNING *;
+
+INSERT INTO entries (account_id, amount) VALUES (1, -10) RETURNING *;
+INSERT INTO entries (account_id, amount) VALUES (2, 10) RETURNING *;
+
+SELECT * FROM accounts WHERE id = 1 FOR UPDATE;
+UPDATE accounts SET balance = 90 WHERE id = 1 RETURNING *;
+
+SELECT * FROM accounts WHERE id = 2 FOR UPDATE;
+UPDATE accounts SET balance = 110 WHERE id = 1 RETURNING *;
+
+ROLLBACK;
+
+// postgresql lock monitoring: https://wiki.postgresql.org/wiki/Lock_Monitoring
+
+show transaction isolation level;
+// Isolation level set and affect only in a transaction (read uncommitted behaves like read committed)
+set transaction isolation level read uncommitted;
+
+// Read Committed
+TR1: begin;
+TR2: begin;
+TR1: select id, bal from accounts; // see acct(1)=100
+TR2: select id, bal from accounts; // see acct(1)=100
+TR1: update accounts set bal = bal - 10 where id = 1 returning *; // see acct(1)=90
+TR2: select id, bal from accounts; // see acct(1)=100
+TR1: commit;
+TR2: select id, bal from accounts; // see acct(1)=90
+
+// Repeatable Read
+TR1: begin;
+TR2: begin;
+TR1: select id, bal from accounts; // see acct(1)=100
+TR2: select id, bal from accounts; // see acct(1)=100
+TR1: update accounts set bal = bal - 10 where id = 1 returning *; // see acct(1)=90
+TR2: select id, bal from accounts; // see acct(1)=100
+TR1: commit;
+TR2: select id, bal from accounts; // see acct(1)=100 !!!
+TR2: update accounts set bal = bal - 10 where id = 1 returning *; // error
+
+// Now setting repeatable read causing serialization anomaly
+TR1: begin;
+TR2: begin;
+TR1: select id, bal from accounts; // see acct(1)=90; acct(2)=100
+TR1: insert into accounts values (190); // sum of accounts
+TR1: select id, bal from accounts; // see acct(1)=90; acct(2)=100; acct(3)=190
+TR2: select id, bal from accounts; // see acct(1)=90; acct(2)=100 !!!
+TR2: insert into accounts values (190); // sum of accounts
+TR2: select id, bal from accounts; // see acct(1)=90; acct(2)=100; acct(4)=190
+TR1: commit;
+TR2: commit;
+TR2: begin;
+TR2: select id, bal from accounts; // see acct(1)=90; acct(2)=100; acct(3)=190; acct(4)=190
+
+/* Posgres Isolation Levels
+Read Uncommitted = behave like Read Committed
+Read Committed: Prevent Dirty Read
+Repeatable Read: Prevent Dirty Read, Non-repeatable Read, Phantom Read
+Serializable: Prevent above plus Serialization Anomaly
+*/
+
