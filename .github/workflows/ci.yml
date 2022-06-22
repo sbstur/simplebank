@@ -17,6 +17,7 @@ jobs:
           POSTGRES_DB: simple_bank
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
+          SSL_MODE: disabled
         ports:
           - "5432:5432"
         
